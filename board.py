@@ -310,7 +310,6 @@ class Grid(object):
                 temp.h = abs(temp.x - end_x) + abs(temp.y - end_y)
                 temp.f = temp.g + temp.h
 
-
                 skip = False
                 for n in openSet:
                     if(n.x == temp.x and n.y == temp.y):
