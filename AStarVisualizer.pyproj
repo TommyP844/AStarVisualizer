@@ -7,7 +7,7 @@
     <StartupFile>main.py</StartupFile>
     <SearchPath>
     </SearchPath>
-    <WorkingDirectory>C:\Users\Dipshit\source\repos\AStarVisualizer</WorkingDirectory>
+    <WorkingDirectory>$(SolutionDir)</WorkingDirectory>
     <OutputPath>.</OutputPath>
     <Name>AStarVisualizer</Name>
     <RootNamespace>AStarVisualizer</RootNamespace>
