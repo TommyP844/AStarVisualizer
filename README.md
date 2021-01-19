@@ -1,10 +1,10 @@
 # AStarVisualizer
 
-A simple app that allows user to create custom paths with start and endpoints for A* to solve.
+A simple app that allows user to place start and enpoints aswell as block nodes
+and then find the path that connects the two, also simulates the node search process
+to allow user to visualize the alrorithm running at human speeds.
 This app uses pygame for the gui. runs on python3+
 
 
 Things to come:
-  1. Animating the node process
-  2. Allow changing of Node.h heuristic
-  3. Allow 8 search directions instead of 4
+  1. Animating the node process ✓
