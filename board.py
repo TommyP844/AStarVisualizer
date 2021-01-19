@@ -349,6 +349,11 @@ class Grid(object):
         copySet = list()
         
         count = len(self.openSet)
+
+        if count == 0:
+            self.animating = False
+            return
+
         for i in range(0, count):
             q = self.openSet.pop()
             self.openSet.append(q)
