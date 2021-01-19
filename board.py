@@ -358,12 +358,10 @@ class Grid(object):
 
             self.openSet.remove(q)
 
-            offsets = [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [1, -1], [-1, -1], [-1, 1]]
-            val = 1
+            offsets = [[0, 1], [1, 0], [0, -1], [-1, 0]]
+      
             for i in range(len(offsets)):
 
-                if i > 4:
-                    val = 1.44
 
                 x = q.x + offsets[i][0] 
                 y = q.y + offsets[i][1]
@@ -379,7 +377,7 @@ class Grid(object):
                     return
 
                 temp = Node(q, x, y)
-                temp.g = val
+                temp.g = 1 + q.g
                 temp.h = abs(temp.x - end_x) + abs(temp.y - end_y)
                 temp.f = temp.g + temp.h
 
@@ -429,12 +427,8 @@ class Grid(object):
 
             openSet.pop(toPop)
 
-            offsets = [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [1, -1], [-1, -1], [-1, 1]]
-            val = 1.0
+            offsets = [[0, 1], [1, 0], [0, -1], [-1, 0]]
             for i in range(len(offsets)):
-
-                if i > 4:
-                    val = 1.44
 
                 x = q.x + offsets[i][0] 
                 y = q.y + offsets[i][1]
@@ -455,7 +449,7 @@ class Grid(object):
                     return ret
 
                 temp = Node(q, x, y)
-                temp.g = val
+                temp.g = 1 + q.g
                 temp.h = abs(temp.x - end_x) + abs(temp.y - end_y)
                 temp.f = temp.g + temp.h
 
