@@ -18,6 +18,12 @@ class Node():
     def __eq__(self, other):
         return self.x == other.x and self.y == other.y
 
+    def __cmp__(self, other):
+        return self.x == other.x and self.y == other.y
+    
+    def __hash__(self):
+        return self.x + self.y * 200
+
 class Grid(object):
     EMPTY = 0
     BLOCK = 1
@@ -25,11 +31,16 @@ class Grid(object):
     END   = 3
     PATH_NODE = 4
 
+    CLOSED_NODE = 5
+    OPEN_NODE = 6
+
     EMPTY_COLOR = 150, 150, 150
     BLOCK_COLOR = 20, 20, 20
     BEGIN_COLOR = 20, 200, 20
     END_COLOR = 20, 20, 200
     PATH_COLOR = 100, 100, 10
+    CLOSED_COLOR = 0, 99, 199
+    OPEN_COLOR = 40, 146, 252
 
 
     def __init__(self, x, y, size, margin, offsetx, offsetybottom, offsetytop):
@@ -41,17 +52,13 @@ class Grid(object):
         self.endx = -1
         self.endy = -1
 
+        self.openSet = list()
+        self.closedSet = list()
+
+        self.animating = False
         self.calculated = False
 
         self.buttons = {}
-
-        self.buttons["reset"] = button.Button(500, 50, 200, 35, "Reset Board", 25, (150, 150, 150), True, (0, 0, 0), (200, 200, 200))
-        self.buttons["emptyNode"] = button.Button(150, 10, size, size, "", 25, self.EMPTY_COLOR, False)
-        self.buttons["blockNode"] = button.Button(150 + 10 + size, 10, size, size, "", 25, self.BLOCK_COLOR, False)
-        self.buttons["startNode"] = button.Button(150 + 2*10 + 2*size, 10, size, size, "", 25, self.BEGIN_COLOR, False)
-        self.buttons["endNode"] = button.Button(150 + 3*10 + 3*size, 10, size, size, "", 25, self.END_COLOR, False)
-        self.buttons["selected"] = button.Button(150, 20 + size, size, size, "", 25, self.EMPTY_COLOR, False)
-        self.buttons["calcPath"] = button.Button(500, 10, 200, 35, "Calculate Path", 25, (150, 150, 150), True, (0, 0, 0), (200, 200, 200))
 
         self.selected = 0
         self.running = True
@@ -70,9 +77,22 @@ class Grid(object):
 
         ## font below
         self.font = pygame.font.SysFont(None, 24)
-        self.selectNodeText = self.font.render('Select Node:', True, (10, 10, 10))
         self.selectedText = self.font.render('Selected:', True, (10, 10, 10))
         
+        self.buttons["emptyNode"] = button.Button(150, 10, size, size, "", 25, self.EMPTY_COLOR, False)
+        self.emptyNodeText = self.font.render('Empty Node', True, (10, 10, 10))
+        self.buttons["blockNode"] = button.Button(150, 50, size, size, "", 25, self.BLOCK_COLOR, False)
+        self.blockNodeText = self.font.render('Block Node', True, (10, 10, 10))
+        self.buttons["startNode"] = button.Button(150, 90, size, size, "", 25, self.BEGIN_COLOR, False)
+        self.startNodeText = self.font.render('Start Node', True, (10, 10, 10))
+        self.buttons["endNode"] = button.Button(150, 130, size, size, "", 25, self.END_COLOR, False)
+        self.endNodeText = self.font.render('End Node', True, (10, 10, 10))
+
+        self.buttons["selected"] = button.Button(340, 10, size, size, "", 25, self.EMPTY_COLOR, False)
+        
+        self.buttons["reset"] = button.Button(500, 50, 200, 35, "Reset Board", 25, (150, 150, 150), True, (0, 0, 0), (200, 200, 200))
+        self.buttons["calcPath"] = button.Button(500, 10, 200, 35, "Calculate Path", 25, (150, 150, 150), True, (0, 0, 0), (200, 200, 200))
+
         
         self.grid = []
         for row in range(y):
@@ -89,18 +109,34 @@ class Grid(object):
             for event in pygame.event.get():  # User did something
                 if event.type == pygame.QUIT:
                     self.running = False
-            
-            if pygame.mouse.get_pressed()[0]:
-                    self.getMouseClick(pygame.mouse.get_pos())
 
+            if self.animating:
+                self.stepAstar()
+                self.animateNodes()
+                pygame.time.wait(200)
+                if self.calculated:
+                    self.updateAndDrawPath()
+            else:
+                # check if the left mouse button has been pressed and process that click
+                if pygame.mouse.get_pressed()[0]:
+                        self.getMouseClick(pygame.mouse.get_pos())
+
+            # Set background color
             self.screen.fill((200, 200, 255))
             
             pygame.draw.rect(self.screen, (0, 0, 0), [self.offsetX, self.offsetYTop,
                                                   (self.nodeSize + self.nodeMargin) * self.nodesX + self.nodeMargin,
                                                   (self.nodeSize + self.nodeMargin) * self.nodesY + self.nodeMargin])
 
-            self.screen.blit(self.selectNodeText, (20, 20))
-            self.screen.blit(self.selectedText, (20, 60))
+            # GUI buttons and text below
+            # Displays buttons so the user can choose between am
+            # 'Empty Node', 'Block Node', 'Start Node' and 'End Node'
+            self.screen.blit(self.startNodeText, (10, 17))
+            self.screen.blit(self.endNodeText, (10, 57))
+            self.screen.blit(self.blockNodeText, (10, 97))
+            self.screen.blit(self.emptyNodeText, (10, 137))
+
+            self.screen.blit(self.selectedText, (255, 17))
 
             self.drawGrid()
 
@@ -125,6 +161,10 @@ class Grid(object):
                     color = self.END_COLOR
                 elif nodeType == self.PATH_NODE:
                     color = self.PATH_COLOR
+                elif nodeType == self.CLOSED_NODE:
+                    color = self.CLOSED_COLOR
+                elif nodeType == self.OPEN_NODE:
+                    color = self.OPEN_COLOR
 
                 pygame.draw.rect(self.screen,
                                  color,
@@ -159,16 +199,27 @@ class Grid(object):
         if (self.buttons["startNode"].isOver(p)):
             self.selected = self.BEGIN
             self.buttons["selected"].bg = self.BEGIN_COLOR
+        
         # End Node
         if (self.buttons["endNode"].isOver(p)):
             self.selected = self.END
             self.buttons["selected"].bg = self.END_COLOR
             
-        
+        # get row and column from mouse position
         col = int((x - self.offsetX - self.nodeMargin) / (self.nodeSize + self.nodeMargin))
         row = int((y - self.offsetYTop - self.nodeMargin) / (self.nodeSize + self.nodeMargin))
 
         if (col < 0 or col > self.nodesX - 1 or row < 0 or row > self.nodesY - 1):
+            return
+
+        if self.grid[row][col] == self.BEGIN:
+            self.selected = self.BEGIN
+            self.buttons["selected"].bg = self.BEGIN_COLOR
+            return
+
+        if self.grid[row][col] == self.END:
+            self.selected = self.END
+            self.buttons["selected"].bg = self.END_COLOR
             return
 
         if (row == self.startx and col == self.starty):
@@ -192,21 +243,32 @@ class Grid(object):
                 self.grid[self.starty][self.startx] = self.EMPTY
             self.startx = col
             self.starty = row
-            self.calculated = False
             self.clearPath()
+            
 
         if(self.selected == self.END):
             if(self.endx != -1 and self.endy != -1):
                 self.grid[self.endy][self.endx] = self.EMPTY
             self.endx = col
             self.endy = row
-            self.calculated = False
             self.clearPath()
 
         if(self.selected == self.BLOCK or self.selected == self.EMPTY):
             if self.isOnPath(col, row):
                 self.clearPath()
+                self.calculated = False
+
+        if self.calculated == True:
+            self.updateAndDrawPath()
+
         self.grid[row][col] = self.selected
+        if(self.startx >= 0 and self.starty >= 0):
+            self.grid[self.starty][self.startx] = self.BEGIN
+
+        if(self.endx >= 0 and self.endy >= 0):
+            self.grid[self.endy][self.endx] = self.END
+
+
 
     def reset_board(self):
         self.startx = -1
@@ -222,27 +284,18 @@ class Grid(object):
                 self.grid[row][column] = self.EMPTY
 
     def calcRoute(self):
-        print("start x: " + str(self.startx))
-        print("start y: " + str(self.starty))
-        print("end x: " + str(self.endx))
-        print("end y: " + str(self.endy))
-        print("nodes x: " + str(self.nodesX))
-        print("nodes y: " + str(self.nodesY))
-
         if(self.startx >= 0 and self.startx < self.nodesX
             and self.starty >= 0 and self.starty < self.nodesY
             and self.endx >= 0 and self.endx < self.nodesX
-            and self.endy >= 0 and self.endy < self.nodesY):       
-            self.path = self.astar()
-            self.calculated = True
-            #print(path)
-            if(self.path):
-                for p in self.path:
-                    self.grid[p[1]][p[0]] = self.PATH_NODE
-                    self.grid[self.starty][self.startx] = self.BEGIN
-                    self.grid[self.endy][self.endx] = self.END
-        else:
-            print("bounds")
+            and self.endy >= 0 and self.endy < self.nodesY):
+            if self.path:
+                self.clearPath()
+            self.animating = True
+            self.openSet = list()
+            self.closedSet = list()
+            nullNode = (None, -1, -1)
+            start_node = Node(nullNode, self.startx, self.starty)
+            self.openSet.append(start_node)
 
     def isOnPath(self, x, y):
         if self.path:
@@ -253,14 +306,106 @@ class Grid(object):
             return False
 
     def clearPath(self):
+        
         for p in self.path:
-            self.grid[p[1]][p[0]] = self.EMPTY
-            self.path = []
+            if self.grid[p[1]][p[0]] == self.PATH_NODE:
+                self.grid[p[1]][p[0]] = self.EMPTY
+        for p in self.openSet:
+            if self.grid[p.y][p.x] == self.OPEN_NODE:
+                self.grid[p.y][p.x] = self.EMPTY
+        for p in self.closedSet:
+            if self.grid[p.y][p.x] == self.CLOSED_NODE:
+                self.grid[p.y][p.x] = self.EMPTY
+        self.path = list()
+        self.openSet = list()
+        self.closedSet = list()
         if(self.startx >= 0 and self.starty >= 0):
             self.grid[self.starty][self.startx] = self.BEGIN
 
         if(self.endx >= 0 and self.endy >= 0):
             self.grid[self.endy][self.endx] = self.END
+
+    def animateNodes(self):
+        if(self.closedSet):
+            for p in self.closedSet:
+                self.grid[p.y][p.x] = self.CLOSED_NODE
+                
+
+        if(self.openSet):
+            for p in self.openSet:
+                self.grid[p.y][p.x] = self.OPEN_NODE 
+               
+        
+        self.grid[self.starty][self.startx] = self.BEGIN
+        self.grid[self.endy][self.endx] = self.END
+
+    def stepAstar(self):
+        print("step")
+        print(len(self.closedSet))
+        
+        end_x = self.endx
+        end_y = self.endy
+
+        copySet = list()
+        
+        count = len(self.openSet)
+        for i in range(0, count):
+            q = self.openSet.pop()
+            self.openSet.append(q)
+            for n in self.openSet:
+                if n.f < q.f:
+                    q = n
+
+            self.openSet.remove(q)
+
+            offsets = [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [1, -1], [-1, -1], [-1, 1]]
+            val = 1
+            for i in range(len(offsets)):
+
+                if i > 4:
+                    val = 1.44
+
+                x = q.x + offsets[i][0] 
+                y = q.y + offsets[i][1]
+                if(x < 0 or x >= self.nodesX or y < 0 or y >= self.nodesY):
+                    continue
+                if(self.grid[y][x] == self.BLOCK):
+                    continue
+                
+                if x == end_x and y == end_y:
+                    print("Path found")
+                    self.animating = False
+                    self.calculated = True
+                    return
+
+                temp = Node(q, x, y)
+                temp.g = val
+                temp.h = abs(temp.x - end_x) + abs(temp.y - end_y)
+                temp.f = temp.g + temp.h
+
+                skip = False
+                for n in self.openSet:
+                    if(n.x == temp.x and n.y == temp.y):
+                        if(n.f <= temp.f):
+                            skip = True
+                for n in self.closedSet:
+                    if(n.x == temp.x and n.y == temp.y):
+                        if(n.f <= temp.f):
+                            skip = True
+                    
+                if skip == False:
+                    copySet.append(temp)
+
+            self.closedSet.append(q)
+        for n in copySet:
+            if not n in self.openSet:
+                self.openSet.append(n)
+        print("Size: " + str(len(self.openSet)))
+
+    def updateAndDrawPath(self):
+        self.path = self.astar()
+        for p in self.path:
+            self.grid[p[1]][p[0]] = self.PATH_NODE
 
     def astar(self): ## A* algorithm
         openSet = list()
@@ -284,9 +429,12 @@ class Grid(object):
 
             openSet.pop(toPop)
 
-            offsets = [[0, 1], [1, 0], [0, -1], [-1, 0]]
-
+            offsets = [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [1, -1], [-1, -1], [-1, 1]]
+            val = 1.0
             for i in range(len(offsets)):
+
+                if i > 4:
+                    val = 1.44
 
                 x = q.x + offsets[i][0] 
                 y = q.y + offsets[i][1]
@@ -294,19 +442,20 @@ class Grid(object):
                     continue
                 if(self.grid[y][x] == self.BLOCK):
                     continue
-                #print("Loc: [ " + str(x) + " , " + str(y) + " ]")
 
                 if x == end_x and y == end_y:
-                    print("path found")
+                    print("Path found")
                     trace = q # Node
                     ret = list()
                     while not (trace.x == self.startx and trace.y == self.starty):
+                        print("{ " + str(trace.x) + " , " + str(trace.y) + " }")
                         ret.append((trace.x, trace.y))
                         trace = trace.parent
+                    print("size: " + str(len(ret)))
                     return ret
 
                 temp = Node(q, x, y)
-                temp.g = 1
+                temp.g = val
                 temp.h = abs(temp.x - end_x) + abs(temp.y - end_y)
                 temp.f = temp.g + temp.h
 
@@ -321,10 +470,7 @@ class Grid(object):
                             skip = True
                     
                 if skip == False:
-                    #print("Inserted")
                     openSet.append(temp)
-                #else:
-                #    print("skipped")
 
             closedSet.append(q);
         print("Destination blocked")
